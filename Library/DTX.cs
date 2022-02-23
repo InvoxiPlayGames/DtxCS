@@ -18,9 +18,11 @@ namespace DtxCS
     public static DataArray FromPlainTextBytes(byte[] dtaBytes)
     {
       DataArray dta;
-      try {
+      try
+      {
         dta = FromDtaString(Encoding.GetEncoding(1252).GetString(dtaBytes));
-      } catch(Exception)
+      }
+      catch (Exception)
       {
         return FromDtaString(Encoding.UTF8.GetString(dtaBytes));
       }
@@ -109,7 +111,7 @@ namespace DtxCS
               case '}':
               case ')':
               case ']':
-                if(data[i] != current.ClosingChar || current.Parent == null)
+                if (data[i] != current.ClosingChar || current.Parent == null)
                 {
                   throw new Exception($"Mismatched closing brace encountered at line {line}.");
                 }
@@ -235,7 +237,7 @@ namespace DtxCS
       {
         current.AddNode(new DataAtom(tmp_float));
       }
-      else if(tmp_literal[0] == '$')
+      else if (tmp_literal[0] == '$')
       {
         current.AddNode(DataVariable.Var(tmp_literal.Substring(1)));
       }
@@ -252,11 +254,12 @@ namespace DtxCS
     public static DataArray FromDtb(System.IO.Stream dtb)
     {
       DataArray root;
-      if(dtb.ReadUInt8() != 0x01)
+      dtb.Position = 0;
+      if (dtb.ReadUInt8() != 0x01)
       {
         dtb.Position = 0;
         dtb = new CryptStream(dtb);
-        if(dtb.ReadUInt8() != 0x01)
+        if (dtb.ReadUInt8() != 0x01)
         {
           throw new Exception("DTB contained unrecognized header.");
         }
@@ -288,10 +291,142 @@ namespace DtxCS
       return root;
     }
 
+    /// <summary>
+    /// Parses a binary format (dtb) file and returns the version and encryption state.
+    /// </summary>
+    /// <param name="dtb"></param>
+    /// <param name="encrypted"></param>
+    public static int DtbVersion(System.IO.Stream dtb, ref bool encrypted)
+    {
+      dtb.Position = 0;
+      encrypted = false;
+      if (dtb.ReadUInt8() != 0x01)
+      {
+        dtb.Position = 0;
+        dtb = new CryptStream(dtb);
+        if (dtb.ReadUInt8() != 0x01)
+          throw new Exception("DTB contained unrecognized header.");
+        encrypted = true;
+      }
+      uint rootNodes = dtb.ReadUInt16LE();
+      dtb.Position = 1;
+      uint rootNodes2 = dtb.ReadUInt32LE();
+      dtb.Position = 3;
+      if (rootNodes == 0)
+        return 2;
+      else if (rootNodes == rootNodes2)
+        return 3;
+      else
+        return 1;
+    }
+
+    /// <summary>
+    /// Converts a DataArray to a binary format (DTB) file.
+    /// </summary>
+    public static long ToDtb(DataArray arr, System.IO.Stream dtb, int version = 3, bool crypt = false)
+    {
+      if (crypt) dtb = new CryptStream(dtb);
+      dtb.Position = 0;
+      dtb.WriteUInt8(0x01);
+      if (version == 2)
+      {
+        dtb.WriteInt32LE(0); //unknown
+        dtb.WriteInt32LE(arr.Count); //rootNodes
+        dtb.WriteInt16LE(0); //unknown
+      }
+      else if (version == 3)
+      {
+        dtb.WriteInt32LE(1); //unknown
+        dtb.WriteInt16LE((short)arr.Count); //rootNodes
+        dtb.WriteInt16LE(1); //unknown
+      }
+      else
+      {
+        dtb.WriteInt16LE((short)arr.Count); //rootNodes
+        dtb.WriteInt32LE(0); //unknown
+      }
+      write_children(arr, dtb, arr.Count, version);
+      return dtb.Length;
+    }
+
+    static void write_children(DataArray dta, System.IO.Stream dtb, int numChildren, int version = 1)
+    {
+      for (int i = 0; i < numChildren; i++)
+      {
+        DataType t = dta.Children[i].Type;
+        dtb.WriteInt32LE((int)t);
+        switch (t)
+        {
+          case DataType.INT:
+            dtb.WriteInt32LE(((DataAtom)dta.Children[i]).Int);
+            break;
+          case DataType.FLOAT:
+            dtb.WriteFloat(((DataAtom)dta.Children[i]).Float);
+            break;
+          case DataType.VARIABLE:
+            dtb.WriteLengthUTF8(((DataVariable)dta.Children[i]).Name.Substring(1));
+            break;
+          case DataType.SYMBOL:
+            dtb.WriteLengthUTF8(((DataSymbol)dta.Children[i]).Name);
+            break;
+          case DataType.ARRAY:
+          case DataType.COMMAND:
+          case DataType.MACRO:
+            if (version == 2)
+            {
+              dtb.WriteInt32LE(0); //unknown
+              dtb.WriteInt32LE(((DataArray)dta.Children[i]).Count); //rootNodes
+              dtb.WriteInt16LE(0); //unknown
+            }
+            else if (version == 3)
+            {
+              dtb.WriteInt32LE(1); //unknown
+              dtb.WriteInt16LE((short)((DataArray)dta.Children[i]).Count); //rootNodes
+              dtb.WriteInt16LE(1); //unknown
+            }
+            else
+            {
+              dtb.WriteInt16LE((short)((DataArray)dta.Children[i]).Count); //rootNodes
+              dtb.WriteInt32LE(0); //unknown
+            }
+            write_children((DataArray)(dta.Children[i]), dtb, ((DataArray)dta.Children[i]).Count, version);
+            break;
+          case DataType.STRING:
+            dtb.WriteLengthUTF8(((DataAtom)dta.Children[i]).String);
+            break;
+          case DataType.EMPTY:
+            dtb.WriteUInt32LE(0);
+            break;
+          case DataType.IFDEF:
+          case DataType.IFNDEF:
+          case DataType.ELSE:
+          case DataType.ENDIF:
+          case DataType.INCLUDE:
+          case DataType.MERGE:
+          case DataType.AUTORUN:
+          case DataType.UNDEF:
+            // directives
+            if (((DataDirective)dta.Children[i]).Constant != null)
+              dtb.WriteLengthUTF8(((DataDirective)dta.Children[i]).Constant);
+            else
+              dtb.WriteUInt32LE(0);
+            break;
+          case DataType.DEFINE:
+            dtb.WriteLengthUTF8(((DataDefine)dta.Children[i]).Constant);
+            numChildren--;
+            write_children((DataArray)((DataDefine)dta.Children[i]).Definition, dtb, 1, version);
+            break;
+          default:
+            Console.WriteLine($"unimplemented {t} in write_children");
+            break;
+        }
+      }
+    }
+
     static DataArray parse_children(System.IO.Stream s, uint numChildren, DataType type = DataType.ARRAY, int version = 1)
     {
       DataArray ret = type == DataType.MACRO ? new DataMacroDefinition()
-                            : type == DataType.COMMAND ? new DataCommand() 
+                            : type == DataType.COMMAND ? new DataCommand()
                             : new DataArray();
       while (numChildren-- > 0)
       {
@@ -320,7 +455,7 @@ namespace DtxCS
               ushort unk = s.ReadUInt16LE();
               ret.AddNode(parse_children(s, nC, t, version));
             }
-            else if(version == 3)
+            else if (version == 3)
             {
               s.Position += 4;
               ushort nC = s.ReadUInt16LE();

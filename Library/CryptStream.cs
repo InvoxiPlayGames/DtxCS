@@ -90,6 +90,33 @@ namespace DtxCS
       return bytesRead;
     }
 
+
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+      // ensure file is at correct offset
+      file.Seek(this.position + 4, SeekOrigin.Begin);
+      if (offset + count > buffer.Length)
+      {
+        throw new IndexOutOfRangeException("Attempt to fill buffer past its end");
+      }
+      if (this.Position == this.Length || this.Position + count > this.Length)
+      {
+        count = (int)(this.Length - this.Position);
+        //throw new System.IO.EndOfStreamException("Cannot read past end of file.");
+      }
+
+      byte[] tempBuf = new byte[count];
+      for (uint i = 0; i < count; i++)
+      {
+        tempBuf[offset + i] = (byte)(buffer[offset + i] ^ (byte)(this.curKey));
+        this.position++;
+        updateKey();
+      }
+
+      file.Write(tempBuf, offset, count);
+      return;
+    }
+
     public override long Seek(long offset, SeekOrigin origin)
     {
       int adjust = origin == SeekOrigin.Current ? 0 : 4;
@@ -106,11 +133,6 @@ namespace DtxCS
     }
 
     public override void SetLength(long value)
-    {
-      throw new NotSupportedException();
-    }
-
-    public override void Write(byte[] buffer, int offset, int count)
     {
       throw new NotSupportedException();
     }

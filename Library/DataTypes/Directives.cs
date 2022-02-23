@@ -6,24 +6,24 @@ namespace DtxCS.DataTypes
   public abstract class DataDirective : DataNode
   {
     public override string Name { get; }
-    public override string ToString() => Name + " " + constant;
+    public override string ToString() => Name + " " + Constant;
 
     public override string ToString(int depth)
     {
       depth = depth <= 0 ? 1 : depth;
-      return Environment.NewLine + Name + " " + constant + Environment.NewLine + new string(' ',--depth*3);
+      return Environment.NewLine + Name + " " + Constant + Environment.NewLine + new string(' ',--depth*3);
     }
     public override DataType Type { get; }
 
     public override DataNode Evaluate() => this;
 
-    protected string constant;
+    public string Constant;
 
     internal DataDirective(string name, DataType type, string constant)
     {
       this.Name = name;
       this.Type = type;
-      this.constant = constant;
+      this.Constant = constant;
     }
   }
 
@@ -33,17 +33,17 @@ namespace DtxCS.DataTypes
   }
   public class DataDefine : DataDirective
   {
-    private DataNode def;
+    public DataNode Definition;
 
     public DataDefine(string constant, DataNode definition) : base("#define", DataType.DEFINE, constant)
     {
-      this.def = definition;
+      this.Definition = definition;
     }
 
     public override string ToString(int depth)
     {
       depth = depth <= 0 ? 1 : depth;
-      return Environment.NewLine + Name + " " + constant + " " + def.ToString() + Environment.NewLine + new string(' ', --depth * 3);
+      return Environment.NewLine + Name + " " + Constant + " " + Definition.ToString() + Environment.NewLine + new string(' ', --depth * 3);
     }
   }
   public class DataIfNDef : DataDirective

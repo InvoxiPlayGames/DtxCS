@@ -29,6 +29,25 @@ static class StreamExtensions
     return ret;
   }
 
+
+  /// <summary>
+  /// Write a signed 8-bit integer to the stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="int8">The integer to write.</param>
+  public static void WriteInt8(this Stream s, sbyte int8) => s.WriteUInt8((byte)int8);
+
+  /// <summary>
+  /// Write an unsigned 8-bit integer to the stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="uint8">The integer to write.</param>
+  public static void WriteUInt8(this Stream s, byte uint8)
+  {
+    byte[] tmp = new byte[1] { uint8 };
+    s.Write(tmp, 0, 1);
+  }
+
   /// <summary>
   /// Read an unsigned 16-bit little-endian integer from the stream.
   /// </summary>
@@ -52,6 +71,24 @@ static class StreamExtensions
   }
 
   /// <summary>
+  /// Write an unsigned 16-bit little-endian integer to the stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="uint16">The integer to write.</param>
+  public static void WriteUInt16LE(this Stream s, ushort uint16) => s.WriteInt16LE((short)uint16);
+
+  /// <summary>
+  /// Write a signed 16-bit little-endian integer to the stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="int16">The integer to write.</param>
+  public static void WriteInt16LE(this Stream s, short int16)
+  {
+    byte[] tmp = BitConverter.GetBytes(int16);
+    s.Write(tmp, 0, 2);
+  }
+
+  /// <summary>
   /// Read an unsigned 16-bit Big-endian integer from the stream.
   /// </summary>
   /// <param name="s"></param>
@@ -71,6 +108,24 @@ static class StreamExtensions
     ret = (tmp[0] << 8) & 0xFF00;
     ret |= tmp[1] & 0x00FF;
     return (short)ret;
+  }
+
+  /// <summary>
+  /// Write an unsigned 16-bit big-endian integer to the stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="uint16">The integer to write.</param>
+  public static void WriteUInt16BE(this Stream s, ushort uint16) => s.WriteInt16BE((short)uint16);
+
+  /// <summary>
+  /// Write a signed 16-bit big-endian integer to the stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="int16">The integer to write.</param>
+  public static void WriteInt16BE(this Stream s, short int16)
+  {
+    byte[] tmp = new byte[2] { (byte)(int16 & 0xFF00 >> 8), (byte)(int16 & 0x00FF) };
+    s.Write(tmp, 0, 2);
   }
 
   /// <summary>
@@ -170,6 +225,24 @@ static class StreamExtensions
   }
 
   /// <summary>
+  /// Write an unsigned 32-bit little-endian integer to the stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="uint32">The integer to write.</param>
+  public static void WriteUInt32LE(this Stream s, uint uint32) => s.WriteInt32LE((int)uint32);
+
+  /// <summary>
+  /// Write a signed 32-bit little-endian integer to the stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="int32">The integer to write.</param>
+  public static void WriteInt32LE(this Stream s, int int32)
+  {
+    byte[] tmp = BitConverter.GetBytes(int32);
+    s.Write(tmp, 0, 4);
+  }
+
+  /// <summary>
   /// Read an unsigned 32-bit Big-endian integer from the stream.
   /// </summary>
   /// <param name="s"></param>
@@ -235,6 +308,17 @@ static class StreamExtensions
   }
 
   /// <summary>
+  /// Write a single-precision (4-byte) floating-point value to the stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="flt">The floating point value to write.</param>
+  public static void WriteFloat(this Stream s, float flt)
+  {
+    byte[] tmp = BitConverter.GetBytes(flt);
+    s.Write(tmp, 0, 4);
+  }
+
+  /// <summary>
   /// Read a null-terminated ASCII string from the given stream.
   /// </summary>
   /// <param name="s"></param>
@@ -276,6 +360,30 @@ static class StreamExtensions
   }
 
   /// <summary>
+  /// Write a length-prefixed string of the specified encoding type to the file.
+  /// The length is a 32-bit little endian integer.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="e">The encoding to use to decode the string.</param>
+  /// <param name="str">The string to write.</param>
+  public static void WriteLengthPrefixedString(this Stream s, Encoding e, string str)
+  {
+    s.WriteInt32LE(str.Length);
+    byte[] chars = e.GetBytes(str);
+    s.Write(chars, 0, str.Length);
+  }
+
+  /// <summary>
+  /// Write a length-prefixed UTF-8 string to the given stream.
+  /// </summary>
+  /// <param name="s"></param>
+  /// <param name="str">The string to write.</param>
+  public static void WriteLengthUTF8(this Stream s, string str)
+  {
+    s.WriteLengthPrefixedString(Encoding.UTF8, str);
+  }
+
+  /// <summary>
   /// Read a given number of bytes from a stream into a new byte array.
   /// </summary>
   /// <param name="s"></param>
@@ -289,7 +397,7 @@ static class StreamExtensions
     s.Read(ret, 0, realCount);
     return ret;
   }
-    
+
   /// <summary>
   /// Read a variable-length integral value as found in MIDI messages.
   /// </summary>
