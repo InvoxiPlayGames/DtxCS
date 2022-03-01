@@ -14,10 +14,17 @@ namespace DtxCS
     private long keypos;
     private Stream file;
 
-    public CryptStream(Stream file)
+    public CryptStream(Stream file, bool write = false)
     {
       file.Position = 0;
-      this.key = cryptRound(file.ReadInt32LE());
+      if (write)
+      {
+        int rKey = new Random().Next();
+        file.WriteInt32LE(rKey);
+        this.key = cryptRound(rKey);
+      }
+      else
+        this.key = cryptRound(file.ReadInt32LE());
       this.curKey = this.key;
       this.file = file;
       this.Length = file.Length - 4;

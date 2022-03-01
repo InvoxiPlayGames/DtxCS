@@ -13,8 +13,8 @@ namespace DtxCS
     /// <summary>
     /// Parses a plaintext DTA given its bytes in a byte array. If an encoding tag is set, tries to use the correct encoding.
     /// </summary>
-    /// <param name="dtaBytes"></param>
-    /// <returns></returns>
+    /// <param name="dtaBytes">A byte array containing binary DTB data</param>
+    /// <returns>DataArray with parsed contents of the given data</returns>
     public static DataArray FromPlainTextBytes(byte[] dtaBytes)
     {
       DataArray dta;
@@ -56,8 +56,8 @@ namespace DtxCS
     /// <summary>
     /// Parses the entirety of a .dta file in a stream to a DataArray.
     /// </summary>
-    /// <param name="data"></param>
-    /// <returns></returns>
+    /// <param name="data">Stream containing DTA data</param>
+    /// <returns>DataArray with parsed contents of the given data</returns>
     public static DataArray FromDtaStream(System.IO.Stream data)
       => FromDtaString(new UTF8Encoding(false).GetString(data.ReadBytes((int)data.Length)));
 
@@ -67,7 +67,38 @@ namespace DtxCS
       in_string,
       in_literal,
       in_symbol,
-      in_comment
+      in_comment,
+      in_directive,
+      in_constant
+    }
+
+    // Helper function for parsing #define directives.
+    private static int ParseDefine(string data, DataArray root)
+    {
+      int parsedCharacters = 0;
+      int layersDeep = 0;
+      int start = 0;
+      for (parsedCharacters = 0; parsedCharacters < data.Length; parsedCharacters++)
+      {
+        switch (data[parsedCharacters])
+        {
+          case '(':
+            if (layersDeep == 0) start = parsedCharacters + 1;
+            layersDeep++;
+            break;
+          case ')':
+            layersDeep--;
+            if (layersDeep == 0) goto DoneParsing;
+            break;
+        }
+      }
+      DoneParsing:
+      if (layersDeep != 0)
+      {
+        throw new Exception("Mismatching brackets in parsing #define directive.");
+      }
+      ParseString(data.Substring(start, parsedCharacters - start), root);
+      return parsedCharacters;
     }
 
     /// <summary>
@@ -81,6 +112,8 @@ namespace DtxCS
       data += " "; // this ensures we parse the whole string...
       DataArray current = root;
       string tmp_literal = "";
+      string tmp_directive = "";
+      string tmp_constant = "";
       int line = 1;
       for (int i = 0; i < data.Length; i++)
       {
@@ -126,9 +159,91 @@ namespace DtxCS
               case '[':
                 current = (DataArray)current.AddNode(new DataMacroDefinition());
                 break;
+              case '#':
+                state = ParseState.in_directive;
+                tmp_directive = "";
+                break;
               default:
                 state = ParseState.in_literal;
                 tmp_literal = new string(data[i], 1);
+                continue;
+            }
+            break;
+          case ParseState.in_directive:
+            switch (data[i])
+            {
+              case ' ':
+              case '\t':
+              case '\r':
+              case '\n':
+                switch(tmp_directive)
+                {
+                  case "else":
+                    current.AddNode(new DataElse());
+                    state = ParseState.whitespace;
+                    break;
+                  case "endif":
+                    current.AddNode(new DataEndIf());
+                    state = ParseState.whitespace;
+                    break;
+                  case "autorun":
+                    current.AddNode(new DataAutorun());
+                    state = ParseState.whitespace;
+                    break;
+                  default:
+                    state = ParseState.in_constant;
+                    tmp_constant = "";
+                    break;
+                }
+                break;
+              default:
+                tmp_directive += data[i];
+                continue;
+            }
+            break;
+          case ParseState.in_constant:
+            switch (data[i])
+            {
+              case ' ':
+              case '\t':
+              case '\r':
+              case '\n':
+              case ')':
+              case '}':
+              case ']':
+                //Console.WriteLine($"{tmp_directive} {tmp_constant}");
+                switch (tmp_directive)
+                {
+                  case "define":
+                    DataArray def = new DataArray();
+                    i += ParseDefine(data.Substring(i), def);
+                    current.AddNode(new DataDefine(tmp_constant, def));
+                    break;
+                  case "ifdef":
+                    current.AddNode(new DataIfDef(tmp_constant));
+                    break;
+                  case "ifndef":
+                    current.AddNode(new DataIfNDef(tmp_constant));
+                    break;
+                  case "include":
+                    current.AddNode(new DataIfNDef(tmp_constant));
+                    break;
+                  case "merge":
+                    current.AddNode(new DataMerge(tmp_constant));
+                    break;
+                  case "undef":
+                    current.AddNode(new DataUndef(tmp_constant));
+                    break;
+                  default:
+                    Console.WriteLine($"Unknown directive {tmp_directive}, constant {tmp_constant}");
+                    AddLiteral(current, tmp_directive);
+                    AddLiteral(current, tmp_constant);
+                    break;
+                }
+                state = ParseState.whitespace;
+                break;
+              default:
+                tmp_constant += data[i];
                 continue;
             }
             break;
@@ -185,7 +300,6 @@ namespace DtxCS
           case ParseState.in_symbol:
             switch (data[i])
             {
-              case ' ':
               case '\r':
               case '\n':
               case '\t':
@@ -250,7 +364,8 @@ namespace DtxCS
     /// <summary>
     /// Parses a binary format (dtb) file.
     /// </summary>
-    /// <param name="dtb"></param>
+    /// <param name="dtb">A stream of binary DTB data</param>
+    /// <returns>DataArray with parsed contents of the given data</returns>
     public static DataArray FromDtb(System.IO.Stream dtb)
     {
       DataArray root;
@@ -294,8 +409,9 @@ namespace DtxCS
     /// <summary>
     /// Parses a binary format (dtb) file and returns the version and encryption state.
     /// </summary>
-    /// <param name="dtb"></param>
-    /// <param name="encrypted"></param>
+    /// <param name="dtb">A stream of binary DTB data</param>
+    /// <param name="encrypted">A reference to a boolean to return encryption state of the passed DTB</param>
+    /// <returns>The version of the passed DTB</returns>
     public static int DtbVersion(System.IO.Stream dtb, ref bool encrypted)
     {
       dtb.Position = 0;
@@ -323,34 +439,53 @@ namespace DtxCS
     /// <summary>
     /// Converts a DataArray to a binary format (DTB) file.
     /// </summary>
+    /// <param name="arr">The DataArray to convert to DTB.</param>
+    /// <param name="dtb">The stream to write the DTB to.</param>
+    /// <param name="version">The version of DTB to write.</param>
+    /// <param name="crypt">Whether to encrypt the DTB.</param>
+    /// <returns>Long integer of bytes written to the stream.</returns>
     public static long ToDtb(DataArray arr, System.IO.Stream dtb, int version = 3, bool crypt = false)
     {
-      if (crypt) dtb = new CryptStream(dtb);
+      if (crypt) dtb = new CryptStream(dtb, true);
       dtb.Position = 0;
       dtb.WriteUInt8(0x01);
+      // skip to the correct position to write nodes
+      if (version == 2)
+        dtb.Position = 11;
+      else if (version == 3)
+        dtb.Position = 9;
+      else if (version == 1)
+        dtb.Position = 7;
+      else
+        throw new Exception($"Invalid DTB version specified (got {version}, expected 1, 2 or 3)");
+      // write the root nodes to the stream
+      int rootnodesToAdd = write_children(arr, dtb, arr.Count, version);
+      long length = dtb.Position;
+      // write the header with correct root node count
+      dtb.Position = 1;
       if (version == 2)
       {
         dtb.WriteInt32LE(0); //unknown
-        dtb.WriteInt32LE(arr.Count); //rootNodes
+        dtb.WriteInt32LE(arr.Count + rootnodesToAdd); //rootNodes
         dtb.WriteInt16LE(0); //unknown
       }
       else if (version == 3)
       {
         dtb.WriteInt32LE(1); //unknown
-        dtb.WriteInt16LE((short)arr.Count); //rootNodes
+        dtb.WriteInt16LE((short)(arr.Count + rootnodesToAdd)); //rootNodes
         dtb.WriteInt16LE(1); //unknown
       }
-      else
+      else if (version == 1)
       {
-        dtb.WriteInt16LE((short)arr.Count); //rootNodes
-        dtb.WriteInt32LE(0); //unknown
+        dtb.WriteInt16LE((short)(arr.Count + rootnodesToAdd)); //rootNodes
+        dtb.WriteInt32LE(1); //unknown
       }
-      write_children(arr, dtb, arr.Count, version);
-      return dtb.Length;
+      return length;
     }
 
-    static void write_children(DataArray dta, System.IO.Stream dtb, int numChildren, int version = 1)
+    static int write_children(DataArray dta, System.IO.Stream dtb, int numChildren, int version = 1)
     {
+      int rootnodesToAdd = 0;
       for (int i = 0; i < numChildren; i++)
       {
         DataType t = dta.Children[i].Type;
@@ -384,10 +519,10 @@ namespace DtxCS
               dtb.WriteInt16LE((short)((DataArray)dta.Children[i]).Count); //rootNodes
               dtb.WriteInt16LE(1); //unknown
             }
-            else
+            else if (version == 1)
             {
               dtb.WriteInt16LE((short)((DataArray)dta.Children[i]).Count); //rootNodes
-              dtb.WriteInt32LE(0); //unknown
+              dtb.WriteInt32LE(1); //unknown
             }
             write_children((DataArray)(dta.Children[i]), dtb, ((DataArray)dta.Children[i]).Count, version);
             break;
@@ -413,14 +548,16 @@ namespace DtxCS
             break;
           case DataType.DEFINE:
             dtb.WriteLengthUTF8(((DataDefine)dta.Children[i]).Constant);
-            numChildren--;
-            write_children((DataArray)((DataDefine)dta.Children[i]).Definition, dtb, 1, version);
+            DataArray parent = new DataArray();
+            parent.AddNode(((DataDefine)dta.Children[i]).Definition);
+            write_children(parent, dtb, 1, version);
+            rootnodesToAdd++;
             break;
           default:
-            Console.WriteLine($"unimplemented {t} in write_children");
-            break;
+            throw new Exception($"Unhandled DTB DataType {Enum.GetName(typeof(DataType), t)} ({(uint)t}) in write_children");
         }
       }
+      return rootnodesToAdd;
     }
 
     static DataArray parse_children(System.IO.Stream s, uint numChildren, DataType type = DataType.ARRAY, int version = 1)
@@ -509,7 +646,7 @@ namespace DtxCS
             ret.AddNode(new DataUndef(s.ReadLengthUTF8()));
             break;
           default:
-            throw new Exception("Unhandled DTB DataType " + Enum.GetName(typeof(DataType), t));
+            throw new Exception($"Unhandled DTB DataType {Enum.GetName(typeof(DataType), t)} ({(uint)t}) in parse_children");
         }
       }
       return ret;

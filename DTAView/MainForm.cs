@@ -25,8 +25,14 @@ namespace DTAView
       string filename = ((string[])e.Data.GetData(DataFormats.FileDrop))[0];
       using (var s = new FileStream(filename, FileMode.Open))
       {
-        d = DtxCS.DTX.FromDtb(s);
-        s.Position = 0;
+        try
+        {
+          d = DtxCS.DTX.FromDtb(s);
+        } catch (Exception)
+        {
+          s.Position = 0;
+          d = DtxCS.DTX.FromDtaStream(s);
+        }
         var sb = new StringBuilder();
         foreach (var x in d.Children)
         {
