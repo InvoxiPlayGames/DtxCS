@@ -106,11 +106,6 @@ namespace DtxCS
       {
         throw new IndexOutOfRangeException("Attempt to fill buffer past its end");
       }
-      if (this.Position == this.Length || this.Position + count > this.Length)
-      {
-        count = (int)(this.Length - this.Position);
-        //throw new System.IO.EndOfStreamException("Cannot read past end of file.");
-      }
 
       byte[] tempBuf = new byte[count];
       for (uint i = 0; i < count; i++)

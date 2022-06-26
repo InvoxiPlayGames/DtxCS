@@ -1,7 +1,7 @@
 # DtxCS
 A C# library to parse and interpret the data-driven scripting language used in Harmonix games
 
-"DTX" is the name I've decided to use to refer to the .dta/.dtb/.dtx/.\*_dta_\* scripting environment that's used in most of Harmonix's games,
+"DTX" is the name I've decided to use to refer to the .dta/.dtb/.dtx/.\*\_dta\_\* scripting environment that's used in most of Harmonix's games,
 including the Rock Band and Guitar Hero series.
 
 This library provides an interface to load these scripts and use them from a C# environment. Preliminary support is included for using

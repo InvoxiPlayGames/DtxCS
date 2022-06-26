@@ -56,6 +56,7 @@
     <ProjectReference Include="..\Library\DtxCS.csproj">
       <Project>{8651B5C6-B8F9-4A30-A4E6-37D6CA367306}</Project>
       <Name>DtxCS</Name>
+      <EmbedInteropTypes>False</EmbedInteropTypes>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
