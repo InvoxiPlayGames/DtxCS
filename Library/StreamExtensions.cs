@@ -368,9 +368,10 @@ static class StreamExtensions
   /// <param name="str">The string to write.</param>
   public static void WriteLengthPrefixedString(this Stream s, Encoding e, string str)
   {
-    s.WriteInt32LE(str.Length);
+    int byteCount = e.GetByteCount(str);
+    s.WriteInt32LE(byteCount);
     byte[] chars = e.GetBytes(str);
-    s.Write(chars, 0, str.Length);
+    s.Write(chars, 0, byteCount);
   }
 
   /// <summary>
