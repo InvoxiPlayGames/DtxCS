@@ -114,6 +114,7 @@ namespace DtxCS
       string tmp_literal = "";
       string tmp_directive = "";
       string tmp_constant = "";
+      bool escaping = false;
       int line = 1;
       for (int i = 0; i < data.Length; i++)
       {
@@ -250,7 +251,16 @@ namespace DtxCS
           case ParseState.in_string:
             switch (data[i])
             {
+              case '\\':
+                escaping = true;
+                break;
               case '"':
+                if (escaping)
+                {
+                  tmp_literal += data[i];
+                  escaping = false;
+                  break;
+                }
                 current.AddNode(new DataAtom(tmp_literal));
                 state = ParseState.whitespace;
                 break;

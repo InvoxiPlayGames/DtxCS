@@ -100,7 +100,7 @@ namespace DtxCS.DataTypes
       switch (type)
       {
         case DataType.STRING:
-          ret += name ? sData : "\"" + sData + "\"";
+          ret += name ? sData : "\"" + sData.Replace("\"", "\\\"") + "\"";
           break;
         case DataType.INT:
           ret += iData.ToString();
