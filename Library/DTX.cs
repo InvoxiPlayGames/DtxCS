@@ -254,6 +254,14 @@ namespace DtxCS
               case '\\':
                 escaping = true;
                 break;
+              case 'n':
+                if (escaping)
+                {
+                  tmp_literal += "\n";
+                  escaping = false;
+                  break;
+                }
+                goto default;
               case '"':
                 if (escaping)
                 {
